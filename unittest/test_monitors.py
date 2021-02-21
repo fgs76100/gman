@@ -143,6 +143,9 @@ class TestFileMonitor(unittest.TestCase):
                 pathname = random.choice(targets)
                 if os.path.isdir(pathname):
                     for name in os.listdir(pathname):
+                        if name[0] == ".":
+                            # skip hidden folder
+                            continue
                         name = os.path.join(pathname, name)
                         if os.path.isfile(name):
                             if name.endswith(".add_file"):
@@ -163,9 +166,6 @@ class TestFileMonitor(unittest.TestCase):
                 self.assertEqual(len(events), len(golden))
                 for event, items in events:
                     diff = set(golden[event]) - set(items)
-                    # print items
-                    # print golden[event]
-                    # print diff, event
                     self.assertEqual(len(items), len(set(golden[event])))
 
 
@@ -188,8 +188,8 @@ class TestSvnMonitor(unittest.TestCase):
             shutil.rmtree(name, ignore_errors=True)
         os.chdir(cls.cwd)
 
-    def test_xxx(self):
-        print "Ooooops"
+    # def test_xxx(self):
+    #     print "Ooooops"
 
 
 if __name__ == "__main__":

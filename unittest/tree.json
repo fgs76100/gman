@@ -8,7 +8,15 @@
                     "children": [
                         {"name": "test.py"},
                         {"name": "__main__.py"},
-                        {"name": "header.h"}
+                        {"name": "header.h"},
+						{
+                    		"name": ".dotfiles",
+                    		"children": [
+                        		{"name": "you_should_not_found_me.py"},
+                        		{"name": "you_cannot_see_me.py"},
+                        		{"name": "__hidden_file__.h"}
+                    		]
+						}
                     ]
                 },
                 {
@@ -35,7 +43,15 @@
                     "name": "ff2_1",
                     "children": [
                         {"name": "__init__.py"},
-                        {"name": "__main__.py"}
+                        {"name": "__main__.py"},
+						{
+                    		"name": ".dotfiles",
+                    		"children": [
+                        		{"name": "you_should_not_found_me.py"},
+                        		{"name": "you_cannot_see_me.py"},
+                        		{"name": "__hidden_file__.h"}
+                    		]
+						}
                     ]
                 },
                 {

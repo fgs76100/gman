@@ -44,6 +44,7 @@ def _iglobstar(dirname, basename):
         if os.path.isdir(dirname):
             yield dirname
         for root, dirs, files in os.walk(dirname):
+            dirs[:] = [d for d in dirs if d[0] != "."]
             for f in itertools.chain(dirs, files):
                 if f[0] != ".":
                     yield os.path.join(root, f)
