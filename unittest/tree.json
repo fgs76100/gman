@@ -1,0 +1,106 @@
+[{
+    "name": "root",
+    "children": [
+        { "name": "f1",
+            "children": [
+                {
+                    "name": "ff1_0",
+                    "children": [
+                        {"name": "test.py"},
+                        {"name": "__main__.py"},
+                        {"name": "header.h"}
+                    ]
+                },
+                {
+                    "name": "ff1_1",
+                    "children": [
+                        {"name": "__init__.py"},
+                        {"name": "__main__.py"}
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "f2",
+            "children": [
+                {"name": "f1"},
+                {
+                    "name": "ff2_0",
+                    "children": [
+                        {"name": "__init__.py"},
+                        {"name": "__main__.py"}
+                    ]
+                },
+                {
+                    "name": "ff2_1",
+                    "children": [
+                        {"name": "__init__.py"},
+                        {"name": "__main__.py"}
+                    ]
+                },
+                {
+                    "name": "ff2_2",
+                    "children": [
+                        {"name": "module.sv"},
+                        {"name": "components.sv"},
+                        {
+                            "name": "submodules",
+                            "children": [
+                                {"name": "submodule.sv"},
+                                {"name": "subcomponents.v"},
+                                {"name": "header.v"},
+                                {"name": "test_submodule.sv"}
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "f3",
+            "children": [
+                {
+                    "name": "ff3_0",
+                    "children": [
+                        {"name": "__init__.py"},
+                        {"name": "__main__.py"}
+                    ]
+                },
+                {
+                    "name": "ff3_1",
+                    "children": [
+                        {"name": "__init__.py"},
+                        {"name": "__main__.py"}
+                    ]
+                },
+                {
+                    "name": "ff3_2",
+                    "children": [
+                        {"name": "module.sv"},
+                        {"name": "components.sv"},
+                        {
+                            "name": "submodules",
+                            "children": [
+                                {"name": "submodule.sv"},
+                                {"name": "subcomponents.v"},
+                                {"name": "header.v"},
+                                {"name": "test_submodule.sv"},
+								{
+                            		"name": "leafCells",
+                            		"children": [
+                                		{"name": "leaf.sv"},
+                                		{"name": "leaf.v"},
+                                		{"name": "leaf.h"},
+                                		{"name": "leaf.py"}
+                            		]
+                        		}
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        {"name": "top.sv"},
+        {"name": "top.h"}
+    ]
+}]
