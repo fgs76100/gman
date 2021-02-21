@@ -113,15 +113,16 @@ class CallBack:
     def __call__(self):
         self._run_cmd()
 
-    def terminate(self):
+    def kill(self):
         try:
             if self._poll() == None:
-                self.worker.terminate()
-                self.close_tmpfile()
+                self.worker.kill()
+        except OSError:
+            pass
         except:
-            self.logger.exception(
-                "failed to terminate process: PID = %s", self.worker.pid
-            )
+            self.logger.exception("failed to kill process: PID = %s", self.worker.pid)
+        finally:
+            self.close_tmpfile()
 
     def get_history(self):
         if not self._is_done:
@@ -143,9 +144,12 @@ class CallBack:
         while self._poll() == None:
             timeout_cnt += 1
             if timeout_cnt > self.timeout:
-                self.terminate()
+                self.kill()
                 self.logger.error(
-                    '"%s" failed due to 5s timeout\n%s', self.name, self.dump_err()
+                    '"%s" failed due to %ss timeout\n%s',
+                    self.name,
+                    self.timeout,
+                    self.dump_err(),
                 )
                 return None, None
             time.sleep(1)
@@ -182,8 +186,10 @@ class CallBack:
 
     def close_tmpfile(self):
         try:
-            self.stderr_tmpfile.close()
-            self.stdout_tmpfile.close()
+            if self.stderr_tmpfile:
+                self.stderr_tmpfile.close()
+            if self.stdout_tmpfile:
+                self.stdout_tmpfile.close()
         except:
             self.logger.exception("failed to close tempfile")
 
@@ -226,14 +232,12 @@ class CallBackPool:
         if self.current_job.is_done:
 
             if self.current_job.returncode != 0:
-                # self.on_error()
                 self.emit("error", self.current_job)
                 if not self.continue_on_error:
                     self._is_done = True
 
             elif self.pool_index == 0:
                 self._is_done = True
-                # self.on_success()
                 self.emit("success")
 
             if not self._is_done:
@@ -249,9 +253,9 @@ class CallBackPool:
     def bind(self, signal, callback):
         self._bind[signal] = callback
 
-    def terminate(self):
-        for job in self.pool():
-            job.terminate()
+    def kill(self):
+        for job in self.pool:
+            job.kill()
 
 
 class EventManger:
@@ -265,9 +269,9 @@ class EventManger:
         self.error_handler = None
         self.success_handler = None
 
-    def terminate(self):
+    def kill(self):
         for pool in self.events.values():
-            pool.terminate()
+            pool.kill()
 
     def add_event(self, event_name, callbacks, continue_on_error=False, **kwargs):
 

@@ -1,18 +1,25 @@
 import logging
 import os
-import sys
+
+# import sys
 import datetime
+import fnmatch
+import re
 from crontab import CronTab
-from generic import get_now, create_logger
+from generic import get_now, create_logger, iglob
 
 
 logger = create_logger("Monitor")
+
+MODIFIED = "modified"
+REMOVED = "removed"
+ADDED = "added"
 
 
 class MonitorBase(object):
     logger = logger
 
-    def __init__(self, schedule, targets, extensions=None, recursive=False, **kwargs):
+    def __init__(self, schedule, targets, name="", **kwargs):
         if isinstance(targets, str):
             targets = [targets]
         if not isinstance(targets, list):
@@ -21,14 +28,19 @@ class MonitorBase(object):
         self.crontab = CronTab(schedule)
         self.next_run = None  # datetime object
 
-        self.extensions = extensions
-        self.recursive = recursive
+        self.name = name
         self.before = {}
 
         self.schedule_next_run()
+        self.targets = []
 
-        self.targets = filter(self.filter_target, targets)
+        for target in targets:
+            self.targets.extend(filter(self.filter_target, iglob(target)))
+        self.targets = set(self.targets)
         self.before = self.get_status()
+
+    def kill(self):
+        pass
 
     def schedule_next_run(self):
         now = get_now()
@@ -41,29 +53,26 @@ class MonitorBase(object):
         return get_now() >= self.next_run
 
     def filter_target(self, target):
-        target = os.path.expandvars(target)
-        target = os.path.abspath(target)
-        if not os.path.exists(target):
+        if not os.path.lexists(target):
             self.logger.error("The path doesn't exist: {0}".format(target))
-            sys.exit(1)
+            raise SystemError(1)
 
         return True
 
     def get_status(self):
         raise NotImplementedError
-        # return {}
 
     def iter_diff(self, verbose=True):
         before = self.before
         after = self.get_status()
         events = {
-            "added": [f for f in after if f not in before],
-            "removed": [f for f in before if f not in after],
+            ADDED: [f for f in after if f not in before],
+            REMOVED: [f for f in before if f not in after],
         }
-        events["modified"] = [
+        events[MODIFIED] = [
             f
             for f, mtime in after.items()
-            if f not in events["added"] and mtime != before[f]
+            if f not in events[ADDED] and mtime != before[f]
         ]
         self.before = after
         for event, items in events.items():
@@ -73,7 +82,7 @@ class MonitorBase(object):
             if items:
                 yield event, items
 
-        # return events
+        del events
 
     def diff(self, verbose=True):
         return list(self.iter_diff(verbose=verbose))

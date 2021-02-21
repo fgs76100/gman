@@ -1,8 +1,10 @@
-from MonitorBase import MonitorBase
+import MonitorBase
 import subprocess
 import os
 import xml.etree.ElementTree
-import sys
+import time
+import tempfile
+from generic import indent
 
 NAME_INDEX = -1
 REVISION_INDEX = 0
@@ -10,33 +12,63 @@ REVISION_INDEX = 0
 ST_LOCK_COLUMN = 2
 
 
-class SvnMonitor(MonitorBase):
+class SvnMonitor(MonitorBase.MonitorBase):
     def __init__(self, *args, **kwargs):
         self.depth = kwargs.get("depth", "empty")
+        if self.depth != "empty":
+            raise NotImplementedError("Sorry! Only support depth==empty.")
+        self.worker = None
+        self.stdout = None
+        self.stderr = None
         super(SvnMonitor, self).__init__(*args, **kwargs)
 
-    def run_command(self, command, wd=None, return_str=False, **kwargs):
+    def kill(self):
+        if self.worker is not None and self.worker.returncode is None:
+            try:
+                self.worker.kill()
+            except OSError:
+                pass
+        if self.stdout:
+            self.stdout.close()
+        if self.stderr:
+            self.stderr.close()
+
+    def run_command(self, command, wd=None, **kwargs):
         command.append("--non-interactive")
 
+        self.kill()
+
+        self.stdout = tempfile.TemporaryFile(prefix="SvnMonitor_stdout_")
+        self.stderr = tempfile.TemporaryFile(prefix="SvnMonitor_stderr_")
+
         worker = subprocess.Popen(
-            command, cwd=wd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs
+            command, cwd=wd, stdout=self.stdout, stderr=self.stderr, **kwargs
         )
+        self.worker = worker
+        worker.wait()
 
-        stdout, stderr = worker.communicate()
-        returncode = worker.returncode
-
-        if returncode != 0:
+        if worker.returncode != 0:
+            self.stderr.seek(0)
+            # self.stdout.seek(0)
+            # self.logger.error(
+            #     "Command failed with {0}: {1}\nOUT:\n{2}\nERR:\n{3}".format(
+            #         worker.returncode,
+            #         " ".join(command),
+            #         "".join(self.stdout.readlines()),
+            #         "".join(self.stderr.readlines()),
+            #     )
+            # )
             self.logger.error(
-                "Command failed with {0}: {1}\n\nOUT:\n{2}\n\nERR:\n{3}".format(
-                    returncode, " ".join(command), stdout, stderr
+                "Command failed with {0}: {1}\nERR:{2}".format(
+                    worker.returncode,
+                    " ".join(command),
+                    "".join(self.stderr.readlines()),
                 )
             )
-            return None
+            # return None
 
-        if return_str:
-            return stdout
-
-        return stdout.strip("\n").split("\n")
+        self.stdout.seek(0)
+        return self.stdout
 
     def filter_target(self, target):
 
@@ -47,7 +79,6 @@ class SvnMonitor(MonitorBase):
                 self.logger.error(
                     "The path is not under version control: {0}".format(target)
                 )
-                sys.exit(1)
 
         return super(SvnMonitor, self).filter_target(target)
 
@@ -57,9 +88,10 @@ class SvnMonitor(MonitorBase):
         if isinstance(options, list):
             svn_st.extend(options)
 
-        raw = self.run_command(svn_st, return_str=True, **kwargs)
+        out = self.run_command(svn_st, **kwargs)
+        # TODO: change parse into iterpase
+        root = xml.etree.ElementTree.parse(out)
 
-        root = xml.etree.ElementTree.fromstring(raw)
         entries = root.findall("target/entry")
 
         for entry in entries:
@@ -114,6 +146,8 @@ class SvnMonitor(MonitorBase):
             if len(svn_st) == 0:
                 continue
 
+            # TODO: support --depth infinity
+            # currently only support --depth empty
             svn_st = svn_st[0]
 
             wc_locked = svn_st.get("wc_locked", "false")
@@ -132,8 +166,8 @@ class SvnMonitor(MonitorBase):
 
         return status
 
-    def get_log(self, event, item, before, after):
-        raw = self.svn_log(
+    def get_log(self, item, before, after):
+        out = self.svn_log(
             item,
             options=[
                 "--revision",
@@ -141,9 +175,10 @@ class SvnMonitor(MonitorBase):
                 "--xml",
                 "--verbose",
             ],
-            return_str=True,
         )
-        root = xml.etree.ElementTree.fromstring(raw)
+        # TODO: change parse into iterpase
+        root = xml.etree.ElementTree.parse(out)
+
         log_enties = root.findall("log/logentry")
         for entry in root.iter("logentry"):
             entry_info = {x.tag: x.text for x in list(entry)}
@@ -156,34 +191,30 @@ class SvnMonitor(MonitorBase):
             yield entry_info
 
     def verbose(self, event, path, before, after):
-        indent = 4 * " "
-        event = event.upper()
-        msg = "r{revision} | {event} {path}"
-        if event == "REMOVED":
-            msg = msg.format(revision=before, event=event, path=path)
-        elif event == "ADDED" and os.path.isfile(path):
-            msg = msg.format(revision=after, event=event, path=path)
-        else:
-            msg = []
+        title = "{revision} | {event} {path}"
+        logs = []
 
-            msg.append(
-                "r{after}:r{before} | {event} {path}".format(
-                    event=event,
-                    path=path,
-                    before=before,
-                    after=after,
-                )
-            )
-
-            for log in self.get_log(event, path, before, after):
-                msg.append(
+        if event == MonitorBase.REMOVED:
+            revision = "r%s" % before
+        elif event == MonitorBase.ADDED and os.path.isfile(path):
+            revision = "r%s" % after
+        elif event == MonitorBase.MODIFIED:
+            revision = "r%s:r%s" % (after, before)
+            for log in self.get_log(path, before, after):
+                logs.append(
                     "{indent}r{revision}  {author}  {msg}".format(indent=indent, **log)
                 )
                 if os.path.isdir(path):
                     for p in log["paths"]:
-                        msg.append(
+                        logs.append(
                             "{indent}{action}  {path}".format(indent=2 * indent, **p)
                         )
-            msg = "{0}\n".format("\n".join(msg))
+        else:
+            raise NotImplementedError
 
-        self.logger.info(msg)
+        self.logger.info(
+            "%s%s%s",
+            title.format(revision=revision, event=event, path=path),
+            "\n" if logs else "",
+            "\n".join(logs),
+        )

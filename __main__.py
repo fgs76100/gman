@@ -1,4 +1,4 @@
-from __future__ import print_function
+# from __future__ import print_function
 from monitors import FileMonitor, SvnMonitor
 from event import EventManger
 from generic import gen_hier
@@ -12,7 +12,7 @@ import tempfile
 from string import Template
 
 
-# logging.getLogger("Event").setLevel(logging.DEBUG)
+logging.getLogger("Event").setLevel(logging.DEBUG)
 logging.getLogger("Monitor").setLevel(logging.DEBUG)
 
 tempdir = os.path.join(os.getcwd(), ".gman_tmp")
@@ -25,7 +25,8 @@ tempfile.tempdir = tempdir
 
 def parse_args():
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("command", nargs="?")
+    # argparser.add_argument("command", nargs="?")
+    argparser.add_argument("command")
     argparser.add_argument("target", nargs="?")
 
     return argparser.parse_args()
@@ -52,6 +53,7 @@ def constructor(jobs, glob_env, project):
                 "This monitor type doesn't support: {0}".format(monitor_type)
             )
 
+        monitor.name = name
         event_manager = EventManger(gen_hier(project, name))
         on_event = settings.get("on_event", {}) or {}
         if not len(on_event):
@@ -60,7 +62,10 @@ def constructor(jobs, glob_env, project):
         continue_on_error = job_config.pop("continue_on_error", False)
 
         for event, callbacks in on_event.items():
-            event_manager.add_event(event, callbacks, continue_on_error, **job_config)
+            if callbacks:
+                event_manager.add_event(
+                    event, callbacks, continue_on_error, **job_config
+                )
 
         on_error = settings.get("on_error", None)
         if on_error:
@@ -77,11 +82,18 @@ def constructor(jobs, glob_env, project):
         yield monitor, event_manager
 
 
+def list_targets(jobs):
+    for monitor in jobs.keys():
+        print monitor.name
+        for target in monitor.targets:
+            print target
+
+
 if __name__ == "__main__":
     # test = FileMonitor(
-    x = parse_args()
+    args = parse_args()
 
-    with open(x.target, "r") as f:
+    with open(args.target, "r") as f:
         working_env = yaml.safe_load(f)
 
     glob_env = os.environ.copy()
@@ -96,6 +108,10 @@ if __name__ == "__main__":
     for monitor, manager in constructor(working_env.get("jobs"), glob_env, project):
         jobs[monitor] = manager
 
+    if args.command == "list-targets":
+        list_targets(jobs)
+        raise SystemExit(0)
+
     while True:
         try:
             for monitor, manager in jobs.items():
@@ -106,5 +122,6 @@ if __name__ == "__main__":
             time.sleep(1)
         except KeyboardInterrupt:
             for monitor, manager in jobs.items():
-                manager.terminate()
+                monitor.kill()
+                manager.kill()
             exit(0)
