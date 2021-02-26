@@ -36,10 +36,14 @@ class SvnMonitor(MonitorBase.MonitorBase):
     def run_command(self, command, wd=None, **kwargs):
         command.append("--non-interactive")
 
-        self.kill()
+        self.kill()  # for closing tempfile correctly
 
-        self.stdout = tempfile.TemporaryFile(prefix="SvnMonitor_stdout_")
-        self.stderr = tempfile.TemporaryFile(prefix="SvnMonitor_stderr_")
+        # self.stdout = tempfile.TemporaryFile(prefix="SvnMonitor_stdout_")
+        # self.stderr = tempfile.TemporaryFile(prefix="SvnMonitor_stderr_")
+        self.stdout = tempfile.NamedTemporaryFile(
+            prefix="SvnMonitor_stdout_", delete=False, suffix=".log"
+        )
+        self.stderr = tempfile.NamedTemporaryFile(prefix="SvnMonitor_stderr_")
 
         worker = subprocess.Popen(
             command, cwd=wd, stdout=self.stdout, stderr=self.stderr, **kwargs
@@ -88,9 +92,9 @@ class SvnMonitor(MonitorBase.MonitorBase):
         if isinstance(options, list):
             svn_st.extend(options)
 
-        out = self.run_command(svn_st, **kwargs)
+        file_object = self.run_command(svn_st, **kwargs)
         # TODO: change parse into iterpase
-        root = xml.etree.ElementTree.parse(out)
+        root = xml.etree.ElementTree.parse(file_object)
 
         entries = root.findall("target/entry")
 
@@ -112,6 +116,7 @@ class SvnMonitor(MonitorBase.MonitorBase):
         svn_up = [
             "svn",
             "up",
+            "--quiet",
             target,
         ]
 
@@ -128,7 +133,10 @@ class SvnMonitor(MonitorBase.MonitorBase):
 
     def get_status(self):
         status = {}
+
         for target in self.targets:
+            if self.before:
+                self.svn_up(target)
 
             svn_st = self.svn_st(
                 target=target,
@@ -162,8 +170,6 @@ class SvnMonitor(MonitorBase.MonitorBase):
             if revision != "" and revision != "-1":
                 status[target] = revision
 
-            self.svn_up(target)
-
         return status
 
     def get_log(self, item, before, after):
@@ -172,49 +178,51 @@ class SvnMonitor(MonitorBase.MonitorBase):
             options=[
                 "--revision",
                 "{1}:{0}".format(after, int(before) + 1),
-                "--xml",
+                # "--xml",
                 "--verbose",
             ],
         )
         # TODO: change parse into iterpase
-        root = xml.etree.ElementTree.parse(out)
+        # root = xml.etree.ElementTree.parse(out)
 
-        log_enties = root.findall("log/logentry")
-        for entry in root.iter("logentry"):
-            entry_info = {x.tag: x.text for x in list(entry)}
+        # log_enties = root.findall("log/logentry")
+        # for entry in root.iter("logentry"):
+        #     entry_info = {x.tag: x.text for x in list(entry)}
 
-            entry_info["paths"] = []
-            entry_info["revision"] = entry.attrib.get("revision")
-            for path in entry.iter("path"):
-                action = path.attrib.get("action")
-                entry_info["paths"].append(dict(path=path.text, action=action))
-            yield entry_info
+        #     entry_info["paths"] = []
+        #     entry_info["revision"] = entry.attrib.get("revision")
+        #     for path in entry.iter("path"):
+        #         action = path.attrib.get("action")
+        #         entry_info["paths"].append(dict(path=path.text, action=action))
+        #     yield entry_info
 
     def verbose(self, event, path, before, after):
-        title = "{revision} | {event} {path}"
-        logs = []
+        title = "{revision} | {event} {path}{logs}"
+        logs = ""
 
         if event == MonitorBase.REMOVED:
             revision = "r%s" % before
         elif event == MonitorBase.ADDED and os.path.isfile(path):
-            revision = "r%s" % after
+            revision = "r%s:r%s" % (after, before)
         elif event == MonitorBase.MODIFIED:
             revision = "r%s:r%s" % (after, before)
-            for log in self.get_log(path, before, after):
-                logs.append(
-                    "{indent}r{revision}  {author}  {msg}".format(indent=indent, **log)
-                )
-                if os.path.isdir(path):
-                    for p in log["paths"]:
-                        logs.append(
-                            "{indent}{action}  {path}".format(indent=2 * indent, **p)
-                        )
+            self.get_log(path, before, after)
+            logs = "\n%slog = %s" % (indent, self.stdout.name)
+            # for log in self.get_log(path, before, after):
+            #     logs.append(
+            #         "{indent}r{revision}  {author}  {msg}".format(indent=indent, **log)
+            #     )
+            #     if os.path.isdir(path):
+            #         for p in log["paths"]:
+            #             logs.append(
+            #                 "{indent}{action}  {path}".format(indent=2 * indent, **p)
+            #             )
         else:
             raise NotImplementedError
 
         self.logger.info(
-            "%s%s%s",
-            title.format(revision=revision, event=event, path=path),
-            "\n" if logs else "",
-            "\n".join(logs),
+            "%s",
+            title.format(revision=revision, event=event, path=path, logs=logs),
+            # "\n" if logs else "",
+            # "\n".join(logs),
         )

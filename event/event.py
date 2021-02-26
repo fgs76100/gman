@@ -40,13 +40,13 @@ class CallBack:
         try:
             self.stdout_tmpfile = tempfile.NamedTemporaryFile(
                 # prefix="{name}_stdout_".format(self.basename),
-                prefix="stdout_",
+                prefix="event_stdout_",
                 delete=False,
                 suffix=".log",
             )
             self.stderr_tmpfile = tempfile.NamedTemporaryFile(
                 # prefix="{name}_stderr_".format(self.basename),
-                prefix="stderr_",
+                prefix="event_stderr_",
                 delete=False,
                 suffix=".log",
             )
@@ -58,6 +58,12 @@ class CallBack:
                 stdout=self.stdout_tmpfile,
                 stderr=self.stderr_tmpfile,
             )
+            if self.logger.isEnabledFor(logging.DEBUG):
+                self.logger.debug(
+                    "%s%s",
+                    "%s was invoked" % self.name,
+                    "\n%sCMD: %s" % (indent, self.get_cmd()),
+                )
 
         except:
             self.logger.exception('failed to execute command "%s"', self.get_cmd())
@@ -78,9 +84,13 @@ class CallBack:
 
             if self.logger.isEnabledFor(logging.DEBUG):
                 self.logger.debug(
-                    '"{name}" exited with {code}'.format(
+                    "{name} exited with {code}{out}{err}".format(
                         name=self.name,
                         code=self.worker.returncode,
+                        out="\n%sOUT: %s" % (indent, self.stdout_tmpfile.name),
+                        err="\n%sERR: %s" % (indent, self.stderr_tmpfile.name)
+                        if self.worker.returncode != 0
+                        else "",
                     )
                 )
 
@@ -146,10 +156,10 @@ class CallBack:
             if timeout_cnt > self.timeout:
                 self.kill()
                 self.logger.error(
-                    '"%s" failed due to %ss timeout\n%s',
+                    '"%s" failed due to %ss timeout\n',
                     self.name,
                     self.timeout,
-                    self.dump_err(),
+                    # self.dump_err(),
                 )
                 return None, None
             time.sleep(1)
@@ -176,13 +186,13 @@ class CallBack:
             for line in self.stderr:
                 yield 2 * indent + line
 
-    def iter_out(self):
-        yield indent + "OUT:"
-        for line in self.stdout:
-            yield 2 * indent + line
+    # def iter_out(self):
+    #     yield indent + "OUT:"
+    #     for line in self.stdout:
+    #         yield 2 * indent + line
 
-    def dump_out(self):
-        return "\n".join(self.iter_out())
+    # def dump_out(self):
+    #     return "\n".join(self.iter_out())
 
     def close_tmpfile(self):
         try:
@@ -319,10 +329,7 @@ class EventManger:
             if self.logger.isEnabledFor(logging.DEBUG):
                 if self.error_handler.returncode != 0:
                     msg = self.error_handler.dump_err()
-                else:
-                    msg = ""
-                msg += self.error_handler.dump_out()
-                self.logger.debug("ErrorHandler:\n%s", msg)
+                    self.logger.debug("ErrorHandler:\n%s", msg)
 
     def on_success(self):
         if self.success_handler is not None:
@@ -330,7 +337,4 @@ class EventManger:
             if self.logger.isEnabledFor(logging.DEBUG):
                 if self.success_handler.returncode != 0:
                     msg = self.success_handler.dump_err()
-                else:
-                    msg = ""
-                msg += self.success_handler.dump_out()
-                self.logger.debug("SuccessHandler:\n%s", msg)
+                    self.logger.debug("SuccessHandler:\n%s", msg)

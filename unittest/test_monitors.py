@@ -23,6 +23,15 @@ def touch(filename):
         return False
 
 
+def edit(filename):
+    try:
+        with open(filename, "a") as fo:
+            fo.write("# add new line")
+        return True
+    except Exception as e:
+        return False
+
+
 def create_tree(tree, hier=""):
     for item in tree:
         name = os.path.join(hier, item.get("name"))
@@ -180,16 +189,40 @@ class TestSvnMonitor(unittest.TestCase):
         cls.cwd = os.getcwd()
         os.chdir(pardir)
         create_tree(tree)
+        os.system("./svnEnv/create_svn.sh")
 
     @classmethod
     def tearDownClass(cls):
         for item in cls.tree:
             name = item.get("name")
             shutil.rmtree(name, ignore_errors=True)
+        os.system("./svnEnv/delete_svn.sh")
         os.chdir(cls.cwd)
 
-    # def test_xxx(self):
-    #     print "Ooooops"
+    def test_svn(self):
+        local1 = "./svn_local1"
+        local2 = "./svn_local2/trunk/root/**"
+        svn = monitors.SvnMonitor("@hourly", local2)
+        if not os.path.exists(local1):
+            raise OSError
+        targets = list(generic.iglob(os.path.join(local1, "trunk/root/**")))
+        self.assertEqual(
+            len(targets), len(svn.targets)
+        )  # two repo should have same entries
+
+        for i in range(200):
+            golden = defaultdict(list)
+            for j in range(5):
+                target = random.choice(targets)
+                if os.path.isfile(target):
+                    edit(target)
+                    golden[monitors.MODIFIED].append(target)
+            os.system("svn ci %s -m modified" % local1)
+
+            if golden:
+                sleep(0.1)
+                events = svn.diff(verbose=False)
+                self.assertEqual(len(events), len(golden))
 
 
 if __name__ == "__main__":
