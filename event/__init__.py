@@ -1,3 +1,3 @@
-from .event import CallBack, EventManger
+from .event import CallBack, EventManger, ANY_EVENT
 
-__all__ = [CallBack, EventManger]
+__all__ = [CallBack, EventManger, ANY_EVENT]

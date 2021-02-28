@@ -32,6 +32,7 @@ class SvnMonitor(MonitorBase.MonitorBase):
             self.stdout.close()
         if self.stderr:
             self.stderr.close()
+        super(SvnMonitor, self).kill()
 
     def run_command(self, command, wd=None, **kwargs):
         command.append("--non-interactive")

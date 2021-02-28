@@ -7,6 +7,7 @@ import fnmatch
 import re
 from crontab import CronTab
 from generic import get_now, create_logger, iglob
+from event import EventManger, ANY_EVENT
 
 
 logger = create_logger("Monitor")
@@ -15,42 +16,91 @@ MODIFIED = "modified"
 REMOVED = "removed"
 ADDED = "added"
 
+crontan_pattern = r"every\s+(\d+)?\s+(second|minute|hour)s?"
+crontan_pattern = re.compile(crontan_pattern)
 
-class MonitorBase(object):
+
+def crontab_mapper(crontab):
+    match = crontan_pattern.match(crontab)
+    if not match:
+        return crontab
+    else:
+        unit = match.group(2)
+        value = match.group(1)
+        value = "/" + value if value else ""
+        if unit == "second":
+            return "*%s * * * * * *" % value
+        elif unit == "minute":
+            return "0 *%s * * * * *" % value
+        elif unit == "hour":
+            return "0 0 *%s * * * *" % value
+        else:
+            return crontab
+
+
+class Scheduler(object):
     logger = logger
 
-    def __init__(self, schedule, targets, name="", **kwargs):
-        if isinstance(targets, str):
-            targets = [targets]
-        if not isinstance(targets, list):
-            raise TypeError("target should be a list or a string")
-
-        self.crontab = CronTab(schedule)
+    def __init__(self, schedule, name="", **kwargs):
+        self.crontab = CronTab(crontab_mapper(schedule))
         self.next_run = None  # datetime object
 
         self.name = name
         self.before = {}
 
         self.schedule_next_run()
-        self.targets = []
-
-        for target in targets:
-            self.targets.extend(filter(self.filter_target, iglob(target)))
-        self.targets = set(self.targets)
-        self.before = self.get_status()
-
-    def kill(self):
-        pass
+        self.event_manager = EventManger(name)
 
     def schedule_next_run(self):
         now = get_now()
         self.next_run = now + datetime.timedelta(
             seconds=int(self.crontab.next(now, default_utc=True))
         )
+        self.logger.debug("%s is scheduled to run at %s", self.name, self.next_run)
 
     @property
     def is_on_duty(self):
         return get_now() >= self.next_run
+
+    def add_events(self, events, *args, **kwargs):
+        for event, callbacks in events.items():
+            if callbacks:
+                self.event_manager.add_event(event, callbacks, *args, **kwargs)
+
+    def add_handler(self, signal, **kwargs):
+        if signal == "on_error":
+            self.event_manager.add_error_handler(**kwargs)
+        elif signal == "on_success":
+            self.event_manager.add_success_handler(**kwargs)
+
+    def __call__(event=ANY_EVENT):
+        if self.event_manager.is_done and self.is_on_duty:
+            self.schedule_next_run()
+            self.event_manager.on(event)
+
+    def kill(self):
+        self.event_manager.kill()
+
+
+class MonitorBase(Scheduler):
+    # logger = logger
+
+    def __init__(self, schedule, targets, name="", **kwargs):
+
+        super(MonitorBase, self).__init__(schedule, name, **kwargs)
+
+        if isinstance(targets, str):
+            targets = [targets]
+
+        if not isinstance(targets, list):
+            raise TypeError("targets should be a list or a string")
+
+        self.targets = []
+
+        for target in targets:
+            self.targets.extend(filter(self.filter_target, iglob(target)))
+        self.targets = set(self.targets)
+        self.before = self.get_status()
 
     def filter_target(self, target):
         if not os.path.lexists(target):
@@ -82,8 +132,6 @@ class MonitorBase(object):
             if items:
                 yield event, items
 
-        del events
-
     def diff(self, verbose=True):
         return list(self.iter_diff(verbose=verbose))
 
@@ -94,3 +142,7 @@ class MonitorBase(object):
                 item,
             )
         )
+
+    def __call__(self):
+        for event, items in self.iter_diff():
+            super(MonitorBase, self).__call__(event)

@@ -4,22 +4,26 @@ project: RLxxxx
 env:
     # assign global environment variables, which will apply to all jobs
     # and even the user script is about to be exectued
-    phone: 0988639378
+    phone: 09123
+
+debug:
+    true
 
 jobs:
     monitor_svn:
-        name: #
-            monitor a svn repo
-        config:
-            working_directory: 
+        # name:
+        #     monitor a svn repo
+        job_config:
+            continue_on_error: false
+            cwd: 
                 # specified a wokring directory to run commands when a event occurs
                 null
-            continue_on_error: false
             env:
                 # local environment variables, which will also inherit from the global environment variables
                 null
         monitor:
-            schedule: "*/2 * * * * * *"
+            # schedule: "*/5 * * * * * *"
+            schedule: every 5 seconds
             type: svn
             targets: 
                 - ./unittest/svn_local2
@@ -30,9 +34,9 @@ jobs:
             # event type: added, modified, removed or any
             any: 
                 - name: search time
-                  cmd: ./test.sh
-                # - name: print somthing
-                #   cmd: ./print.sh
+                  cmd: "grep 999999999999999 *.log"
+                - name: print somthing
+                  cmd: echo "somthing"
                 # - name: search 123 with error
                 #   cmd: grep 123  __main__.py
         on_error:

@@ -1,131 +1,169 @@
 import subprocess
 import datetime
 import os
-from generic import get_now, gen_hier, create_logger, indent
 import shlex
-import yaml
 import logging
 import tempfile
 import time
+import yaml
+import threading
+from generic import get_now, gen_hier, create_logger, indent
 
 
-logger = create_logger("Event")
+LOGGER = create_logger("Event")
+
+EXECUTE_FAIL = 191
+SUCCESS = 0
+
+ANY_EVENT = "any"  # speical event will trigger if none of events match
+
+
+class PopenThread(threading.Thread):
+    """
+    create a thead has same API as subprocess.Popen
+    """
+
+    def __init__(self, **kwargs):
+        super(PopenThread, self).__init__(
+            group=kwargs.get("group", None),
+            target=kwargs.get("target", None),
+            name=kwargs.get("name", None),
+            args=kwargs.get("args", []),
+            kwargs=kwargs.get("kwargs", {}),
+        )
+        self.daemon = True
+        self.pid = 0
+
+    def poll(self):
+        return self.returncode
+
+    def kill(self):
+        pass
+
+    @property
+    def returncode(self):
+        if self.is_alive():
+            return None
+
+        return SUCCESS
 
 
 class CallBack:
 
-    logger = logger
+    logger = LOGGER
 
-    def __init__(self, name, cmd, env=None, working_directory=None):
+    def __init__(self, name, cmd, env=None, **kwargs):
         self.name = name
-        self._cmd = shlex.split(cmd)
-        self.start_time = None
-        self.end_time = None
         self.worker = None
-        self.env = env
-        self.wd = working_directory
         self._is_done = True
         self.stdout_tmpfile = None
-        self.stderr_tmpfile = None
         self.timeout = 10
-        # self.basename = os.path.basename(name).replace(" ", "_")
+        self.history = dict()
+        self.env = env or {}
+        self.kwargs = kwargs
+        self.returncode = SUCCESS
+
+        if callable(cmd):
+            # cmd is python function
+            self._cmd = cmd
+        else:
+            # cmd is a command line string
+            self._cmd = shlex.split(cmd)
 
     def get_cmd(self):
+        if callable(self._cmd):
+            return self._cmd.__name__
+
         return " ".join(self._cmd)
 
-    def _run_cmd(self):
-        self._is_done = False
+    def _run_func(self):
+        # if self._cmd is python functio
+        self.worker = PopenThread(target=self._cmd, **self.kwargs)
+        self.worker.start()
+
+    def _run_os_cmd(self):
+        # if self._cmd is os command line
+
         self.start_time = get_now()
+        basename = os.path.basename(self.name).replace(" ", "_")
 
-        try:
-            self.stdout_tmpfile = tempfile.NamedTemporaryFile(
-                # prefix="{name}_stdout_".format(self.basename),
-                prefix="event_stdout_",
-                delete=False,
-                suffix=".log",
-            )
-            self.stderr_tmpfile = tempfile.NamedTemporaryFile(
-                # prefix="{name}_stderr_".format(self.basename),
-                prefix="event_stderr_",
-                delete=False,
-                suffix=".log",
-            )
+        self.stdout_tmpfile = tempfile.NamedTemporaryFile(
+            prefix="%s_stdout_" % basename,
+            delete=False,
+            suffix=".log",
+        )
+        # self.stderr_tmpfile = tempfile.NamedTemporaryFile(
+        #     # prefix="{name}_stderr_".format(self.basename),
+        #     prefix="event_stderr_",
+        #     delete=False,
+        #     suffix=".log",
+        # )
 
-            self.worker = subprocess.Popen(
-                self._cmd,
-                env=self.env,
-                cwd=self.wd,
-                stdout=self.stdout_tmpfile,
-                stderr=self.stderr_tmpfile,
-            )
-            if self.logger.isEnabledFor(logging.DEBUG):
-                self.logger.debug(
-                    "%s%s",
-                    "%s was invoked" % self.name,
-                    "\n%sCMD: %s" % (indent, self.get_cmd()),
-                )
+        self.worker = subprocess.Popen(
+            self._cmd,
+            env=self.env,
+            stdout=self.stdout_tmpfile,
+            # stderr=self.stderr_tmpfile,
+            stderr=subprocess.STDOUT,
+            **self.kwargs
+        )
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug("%s\n%s", "%s was invoked" % self.name, self.get_info())
 
-        except:
-            self.logger.exception('failed to execute command "%s"', self.get_cmd())
-            raise
+    def get_info(self, _indent=indent):
+        if callable(self._cmd):
+            info = ["%sFunc: %s" % (_indent, self.get_cmd())]
+        else:
+            info = [
+                "%sCMD: %s" % (_indent, self.get_cmd()),
+                "%sLOG: %s" % (_indent, self.stdout_tmpfile.name),
+            ]
+        return "\n".join(info)
 
     def _poll(self):
-        if self.worker is None:
-            return 0
+        if self._is_done or not self.worker:
+            return self.returncode
 
-        self.worker.poll()
+        if self.worker:
+            self.worker.poll()
+            self.returncode = self.worker.returncode
 
-        # self.logger.debug("%s %s %s", self.name, self.worker.pid, self.worker.returncode)
-
-        if self.worker.returncode is not None:
+        if self.returncode is not None:
             self.end_time = get_now()
             self._is_done = True
             self.close_tmpfile()
 
             if self.logger.isEnabledFor(logging.DEBUG):
                 self.logger.debug(
-                    "{name} exited with {code}{out}{err}".format(
+                    "{name} exited with {code}\n{info}".format(
                         name=self.name,
-                        code=self.worker.returncode,
-                        out="\n%sOUT: %s" % (indent, self.stdout_tmpfile.name),
-                        err="\n%sERR: %s" % (indent, self.stderr_tmpfile.name)
-                        if self.worker.returncode != 0
-                        else "",
+                        code=self.returncode,
+                        info=self.get_info(),
                     )
                 )
 
-        return self.worker.returncode
-
-    @property
-    def returncode(self):
-        if self.worker is None:
-            return 0
-        return self.worker.returncode
+        return self.returncode
 
     @property
     def is_done(self):
         return self._is_done or self._poll() != None
 
-    @property
-    def stderr(self):
-        with open(self.stderr_tmpfile.name, "r") as stderr:
-            stderr.seek(0)
-            for line in stderr.readlines():
-                yield line.rstrip("\n")
-
-    @property
-    def stdout(self):
-        with open(self.stdout_tmpfile.name, "r") as stdout:
-            stdout.seek(0)
-            for line in stdout.readlines():
-                yield line.rstrip("\n")
-
     def __call__(self):
-        self._run_cmd()
+        self._is_done = False
+        self.returncode = None
+        try:
+            if callable(self._cmd):
+                self._run_func()
+            else:
+                self._run_os_cmd()
+        except:
+            self.logger.exception('failed to execute command "%s"', self.get_cmd())
+            self.returncode = EXECUTE_FAIL
+            raise
 
     def kill(self):
         try:
-            if self._poll() == None:
+            if self.worker and self._poll() == None:
                 self.worker.kill()
         except OSError:
             pass
@@ -144,12 +182,12 @@ class CallBack:
             start_time=self.start_time,
             end_time=self.end_time,
             returncode=self.returncode,
-            out=self.stdout_tmpfile.name,
-            err=self.stderr_tmpfile.name,
+            log=self.stdout_tmpfile.name if self.stdout_tmpfile else "not available",
+            # err=self.stderr_tmpfile.name,
         ).copy()
 
     def communicate(self):
-        self._run_cmd()
+        self.__call__()
         timeout_cnt = 0
         while self._poll() == None:
             timeout_cnt += 1
@@ -164,40 +202,16 @@ class CallBack:
                 return None, None
             time.sleep(1)
 
-        return self.stdout_tmpfile.name, self.stderr_tmpfile.name
-
-    def dump_err(self):
-        return "\n".join(self.iter_err())
-
-    def iter_err(self):
-        # if not self._is_done:
-        #     return None
-        # yield msg.format("Command", " ".join(self.cmd), indent=indent)
-        yield indent + "CMD:"
-        yield 2 * indent + self.get_cmd()
-
-        # if self.logger.isEnabledFor(logging.DEBUG):
-        #     yield indent + "OUT:"
-        #     for line in self.stdout:
-        #         yield 2*indent + line.rstrip("\n")
-
-        if self.returncode != 0:
-            yield indent + "ERR:"
-            for line in self.stderr:
-                yield 2 * indent + line
-
-    # def iter_out(self):
-    #     yield indent + "OUT:"
-    #     for line in self.stdout:
-    #         yield 2 * indent + line
-
-    # def dump_out(self):
-    #     return "\n".join(self.iter_out())
+        # return self.stdout_tmpfile.name, self.stderr_tmpfile.name
+        if self.stdout_tmpfile:
+            return self.stdout_tmpfile.name
+        else:
+            return None
 
     def close_tmpfile(self):
         try:
-            if self.stderr_tmpfile:
-                self.stderr_tmpfile.close()
+            # if self.stderr_tmpfile:
+            #     self.stderr_tmpfile.close()
             if self.stdout_tmpfile:
                 self.stdout_tmpfile.close()
         except:
@@ -206,7 +220,7 @@ class CallBack:
 
 class CallBackPool:
 
-    logger = logger
+    logger = LOGGER
 
     def __init__(self, name, continue_on_error=False):
         self.continue_on_error = continue_on_error
@@ -241,7 +255,7 @@ class CallBackPool:
     def _poll(self):
         if self.current_job.is_done:
 
-            if self.current_job.returncode != 0:
+            if self.current_job.returncode != SUCCESS:
                 self.emit("error", self.current_job)
                 if not self.continue_on_error:
                     self._is_done = True
@@ -270,7 +284,7 @@ class CallBackPool:
 
 class EventManger:
 
-    logger = logger
+    logger = LOGGER
 
     def __init__(self, name="", env=None):
         self.name = name
@@ -290,18 +304,23 @@ class EventManger:
         for callback in callbacks:
             name = callback.get("name", "")
             cmd = callback.get("cmd")
-            callback_pool.add(name, cmd, **kwargs)
+            # kwargs.update(callback)
+            callback.update(kwargs)
+            callback_pool.add(**callback)
 
         self.events[event_name] = callback_pool
 
     def on(self, event):
         if event not in self.events:
-            event = "any"
+            event = ANY_EVENT
 
         callbackpool = self.events.get(event, None)
 
         if callbackpool is not None:
             callbackpool.run()
+
+    # def add_handler(self, signal, name, cmd, **kwargs):
+    #     name = gen_hier(signal, name)
 
     def add_error_handler(self, name, cmd, **kwargs):
         name = gen_hier("on_error", name)
@@ -321,20 +340,30 @@ class EventManger:
 
     def on_error(self, job_info):
         self.logger.error(
-            '"{0}" failed\n{info}'.format(job_info.name, info=job_info.dump_err())
+            '"{0}" failed\n{info}'.format(job_info.name, info=job_info.get_info())
         )
-        if self.error_handler is not None:
-            self.error_handler.env.update({"__EVENT_NAME__": job_info.name})
-            self.error_handler.communicate()
-            if self.logger.isEnabledFor(logging.DEBUG):
-                if self.error_handler.returncode != 0:
-                    msg = self.error_handler.dump_err()
+        try:
+            if self.error_handler is not None:
+                self.error_handler.env.update({"__EVENT_NAME__": job_info.name})
+                self.error_handler.communicate()
+                # if self.logger.isEnabledFor(logging.DEBUG):
+                if self.error_handler.returncode != SUCCESS:
+                    msg = self.error_handler.get_info()
                     self.logger.debug("ErrorHandler:\n%s", msg)
+        except:
+            self.logger.exception(
+                "failed to run 'on_error'\n%s", self.error_handler.get_info()
+            )
 
     def on_success(self):
-        if self.success_handler is not None:
-            self.success_handler.communicate()
-            if self.logger.isEnabledFor(logging.DEBUG):
-                if self.success_handler.returncode != 0:
-                    msg = self.success_handler.dump_err()
+        try:
+            if self.success_handler is not None:
+                self.success_handler.communicate()
+                # if self.logger.isEnabledFor(logging.DEBUG):
+                if self.success_handler.returncode != SUCCESS:
+                    msg = self.success_handler.get_info()
                     self.logger.debug("SuccessHandler:\n%s", msg)
+        except:
+            self.logger.exception(
+                "failed to run 'on_success'\n%s", self.success_handler.get_info()
+            )
