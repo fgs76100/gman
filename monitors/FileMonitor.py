@@ -13,9 +13,8 @@ class FileMonitor(MonitorBase):
                         if os.path.isfile(filename):
                             yield filename
             else:
-                # if os.path.exists(target) and self.endswith(target):
-                # if self.endswith(target):
-                yield target
+                if os.path.lexists(target):
+                    yield target
 
     def get_status(self):
         return dict([(f, os.path.getmtime(f)) for f in self.gather_files()])

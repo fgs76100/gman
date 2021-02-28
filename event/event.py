@@ -7,7 +7,7 @@ import tempfile
 import time
 import yaml
 import threading
-from generic import get_now, gen_hier, create_logger, indent
+from generic import get_now, gen_hier, create_logger, indent, get_hier_basename
 
 
 LOGGER = create_logger("Event")
@@ -58,7 +58,7 @@ class CallBack:
         self._is_done = True
         self.stdout_tmpfile = None
         self.timeout = 10
-        self.history = dict()
+        # self.history = dict()
         self.env = env or {}
         self.kwargs = kwargs
         self.returncode = SUCCESS
@@ -85,7 +85,7 @@ class CallBack:
         # if self._cmd is os command line
 
         self.start_time = get_now()
-        basename = os.path.basename(self.name).replace(" ", "_")
+        basename = get_hier_basename(self.name).replace(" ", "_")
 
         self.stdout_tmpfile = tempfile.NamedTemporaryFile(
             prefix="%s_stdout_" % basename,
@@ -107,8 +107,8 @@ class CallBack:
             stderr=subprocess.STDOUT,
             **self.kwargs
         )
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug("%s\n%s", "%s was invoked" % self.name, self.get_info())
+        # if self.logger.isEnabledFor(logging.DEBUG):
+        self.logger.info("%s\n%s", "%s was invoked" % self.name, self.get_info())
 
     def get_info(self, _indent=indent):
         if callable(self._cmd):
@@ -163,7 +163,7 @@ class CallBack:
 
     def kill(self):
         try:
-            if self.worker and self._poll() == None:
+            if self.worker and not self._is_done:
                 self.worker.kill()
         except OSError:
             pass

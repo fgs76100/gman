@@ -46,17 +46,20 @@ class Scheduler(object):
         self.next_run = None  # datetime object
 
         self.name = name
-        self.before = {}
-
-        self.schedule_next_run()
+        # self.schedule_next_run()
         self.event_manager = EventManger(name)
 
-    def schedule_next_run(self):
-        now = get_now()
-        self.next_run = now + datetime.timedelta(
-            seconds=int(self.crontab.next(now, default_utc=True))
+    def initialize(self):
+        self.schedule_next_run()
+
+    def schedule_next_run(self, date=None):
+        if not date:
+            date = get_now()
+        self.next_run = date + datetime.timedelta(
+            seconds=int(self.crontab.next(date, default_utc=True))
         )
-        self.logger.debug("%s is scheduled to run at %s", self.name, self.next_run)
+        return self.next_run
+        # self.logger.debug("%s is scheduled to run at %s", self.name, self.next_run)
 
     @property
     def is_on_duty(self):
@@ -67,13 +70,13 @@ class Scheduler(object):
             if callbacks:
                 self.event_manager.add_event(event, callbacks, *args, **kwargs)
 
-    def add_handler(self, signal, **kwargs):
+    def add_handler(self, signal, name, cmd, **kwargs):
         if signal == "on_error":
-            self.event_manager.add_error_handler(**kwargs)
+            self.event_manager.add_error_handler(name, cmd, **kwargs)
         elif signal == "on_success":
-            self.event_manager.add_success_handler(**kwargs)
+            self.event_manager.add_success_handler(name, cmd, **kwargs)
 
-    def __call__(event=ANY_EVENT):
+    def __call__(self, event=ANY_EVENT):
         if self.event_manager.is_done and self.is_on_duty:
             self.schedule_next_run()
             self.event_manager.on(event)
@@ -100,12 +103,17 @@ class MonitorBase(Scheduler):
         for target in targets:
             self.targets.extend(filter(self.filter_target, iglob(target)))
         self.targets = set(self.targets)
+        # self.before = self.get_status()
+        self.before = {}
+
+    def initialize(self):
+        super(MonitorBase, self).initialize()
         self.before = self.get_status()
 
     def filter_target(self, target):
         if not os.path.lexists(target):
             self.logger.error("The path doesn't exist: {0}".format(target))
-            raise SystemError(1)
+            return False
 
         return True
 
@@ -143,6 +151,11 @@ class MonitorBase(Scheduler):
             )
         )
 
-    def __call__(self):
-        for event, items in self.iter_diff():
-            super(MonitorBase, self).__call__(event)
+    def __call__(self, event=None):
+        if self.event_manager.is_done and self.is_on_duty:
+            self.schedule_next_run()
+            if event:
+                self.event_manager.on(event)
+            else:
+                for event, items in self.iter_diff():
+                    self.event_manager.on(event)

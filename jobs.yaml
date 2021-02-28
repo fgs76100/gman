@@ -7,7 +7,7 @@ env:
     phone: 09123
 
 debug:
-    true
+    True
 
 jobs:
     monitor_svn:
@@ -27,21 +27,22 @@ jobs:
             type: svn
             targets: 
                 - ./unittest/svn_local2
+                - ./notgannamatch
                 # - ./unittest/two/trunk/test1/
                 # - ./unittest/two/trunk/test2/add.ext
-        on_event:
+        on_events:
             # events will be trigered if monitor detects any changes on targets
             # event type: added, modified, removed or any
             any: 
                 - name: search time
-                  cmd: "grep 999999999999999 *.log"
+                  cmd: ls -al .
                 - name: print somthing
                   cmd: echo "somthing"
                 # - name: search 123 with error
                 #   cmd: grep 123  __main__.py
         on_error:
             name: do somthing if exectued cmd returns a error
-            cmd: ./print_error.sh
+            cmd: echo "error"
             # cmd: ./expensive.sh
               # cmd: send -phone ${phone} -msg "error when ..."
         on_success:

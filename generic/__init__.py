@@ -1,3 +1,4 @@
+from __future__ import print_function
 import datetime
 import logging
 import fnmatch
@@ -21,6 +22,10 @@ def gen_hier(parent, child):
     generate hierarchy scope
     """
     return "{parent}/{child}".format(parent=parent, child=child)
+
+
+def get_hier_basename(hier):
+    return os.path.basename(hier)
 
 
 def create_logger(name):
@@ -79,9 +84,13 @@ def iglob(pathname):
         if basename:
             if os.path.lexists(pathname):
                 yield pathname
+            else:
+                print("WARNING: Drop '%s' because it doesn't exist" % pathname)
         else:
             if os.path.isdir(dirname):
-                yield pathname
+                yield dirname
+            else:
+                print("WARNING: Drop '%s' because it is not a directory" % pathname)
         return
 
     if dirname == "":
