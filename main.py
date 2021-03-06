@@ -10,6 +10,8 @@ import yaml
 import argparse
 import tempfile
 import traceback
+import copy
+import shutil
 from string import Template
 
 logger = logging.getLogger(__name__)
@@ -19,7 +21,7 @@ tempfile.tempdir = TEMPDIR
 LOGFILE = "gman.log"
 
 
-COMMANDS = ("list-targets", "list-schedule", "run")
+COMMANDS = ("list-targets", "list-schedule", "run", "clean")
 
 
 def parse_args():
@@ -103,14 +105,16 @@ def constructor(jobs, glob_env, project):
 
         continue_on_error = job_config.pop("continue_on_error", False)
 
-        monitor.add_events(on_events, continue_on_error=continue_on_error, **job_config)
+        for event, callbacks in on_events.items():
+            if callbacks:
+                config = copy.deepcopy(job_config)
+                monitor.add_event(event, callbacks, config, continue_on_error)
 
         for signal in ("on_error", "on_success"):
             callback = settings.get(signal, None)
             if callback:
-                monitor.add_handler(
-                    signal, callback["name"], callback["cmd"], **job_config
-                )
+                config = copy.deepcopy(job_config)
+                monitor.add_handler(signal, callback["name"], callback["cmd"], **config)
 
         yield monitor
 
@@ -118,6 +122,15 @@ def constructor(jobs, glob_env, project):
 def helper(command, monitors, name):
     if command == "run":
         return
+
+    if command == "clean":
+        # remove log files and temp dirs
+        for path in os.listdir("./"):
+            if path.startswith(LOGFILE):
+                os.unlink(path)
+            elif path.startswith(os.path.basename(TEMPDIR)):
+                shutil.rmtree(path, ignore_errors=True)
+        raise SystemExit(0)
 
     for monitor in monitors:
         if name and get_hier_basename(monitor.name) != name:

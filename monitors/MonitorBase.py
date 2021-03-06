@@ -67,10 +67,8 @@ class Scheduler(object):
     def is_on_duty(self):
         return get_now() >= self.next_run
 
-    def add_events(self, events, *args, **kwargs):
-        for event, callbacks in events.items():
-            if callbacks:
-                self.event_manager.add_event(event, callbacks, *args, **kwargs)
+    def add_event(self, event, callbacks, config, continue_on_error=False):
+        self.event_manager.add_event(event, callbacks, config, continue_on_error)
 
     def add_handler(self, signal, name, cmd, **kwargs):
         if signal == "on_error":

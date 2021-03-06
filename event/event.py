@@ -7,6 +7,7 @@ import tempfile
 import time
 import yaml
 import threading
+import copy
 from generic import get_now, gen_hier, indent, get_hier_basename
 
 
@@ -58,9 +59,9 @@ class CallBack:
         self._is_done = True
         self.stdout_tmpfile = None
         self.timeout = 30
-        # self.history = dict()
         self.env = env or {}
-        self.kwargs = kwargs
+        self.fork = kwargs.pop("fork", False)
+        self.join = kwargs.pop("join", False)
         self.returncode = SUCCESS
 
         if callable(cmd):
@@ -69,6 +70,8 @@ class CallBack:
         else:
             # cmd is a command line string
             self._cmd = shlex.split(cmd)
+
+        self.kwargs = kwargs
 
     def get_cmd(self):
         if callable(self._cmd):
@@ -99,6 +102,7 @@ class CallBack:
         #     suffix=".log",
         # )
 
+        # try:
         self.worker = subprocess.Popen(
             self._cmd,
             env=self.env,
@@ -108,7 +112,11 @@ class CallBack:
             **self.kwargs
         )
         # if self.logger.isEnabledFor(logging.DEBUG):
-        self.logger.info('"%s"\n%s', "%s was invoked" % self.name, self.get_info())
+        self.logger.info('"%s" was invoked\n%s', self.name, self.get_info())
+        # except:
+        #     self.logger.exception('"%s" failed to execute', self.get_cmd())
+        #     self._is_done = True
+        #     self.returncode = EXECUTE_FAIL
 
     def get_info(self, _indent=indent):
         if callable(self._cmd):
@@ -157,9 +165,10 @@ class CallBack:
             else:
                 self._run_os_cmd()
         except:
+            # self.logger.exception('"%s" failed to execute', self.get_cmd())
             self.logger.exception('failed to execute command "%s"', self.get_cmd())
+            self._is_done = True
             self.returncode = EXECUTE_FAIL
-            raise
 
     def kill(self):
         try:
@@ -231,21 +240,33 @@ class CallBackPool:
         self.histories = []
         self._is_done = True
         self._bind = {}
+        self.done_index = 0
 
     def add(self, name, cmd, **kwargs):
         self.pool.append(CallBack(gen_hier(self.name, name), cmd, **kwargs))
 
     def _run_job(self):
-        self.current_job = self.pool[self.pool_index]
-        self.current_job()
-        self.pool_index += 1
+        if self.pool_index < len(self.pool):
+            self.current_job = self.pool[self.pool_index]
+            self.current_job()
+            self.pool_index += 1
 
-        if self.pool_index >= len(self.pool):
-            self.pool_index = 0
+            if self.pool_index >= len(self.pool):
+                return
+            next_job = self.pool[self.pool_index]
+
+            if next_job.fork:
+                self._run_job()
+
+            elif self.current_job.fork and not next_job.join:
+                self._run_job()
 
     def run(self):
         self._is_done = False
         self.pool_index = 0
+        self.done_index = 0
+        if not self.pool:
+            raise ValueError("There are no callback was added in pool")
         self._run_job()
 
     @property
@@ -253,21 +274,61 @@ class CallBackPool:
         return self._is_done or self._poll()
 
     def _poll(self):
-        if self.current_job.is_done:
 
-            if self.current_job.returncode != SUCCESS:
-                self.emit("error", self.current_job)
-                if not self.continue_on_error:
-                    self._is_done = True
+        unfinish_jobs = self.pool[self.done_index : self.pool_index]
 
-            elif self.pool_index == 0:
+        if self.pool_index == len(self.pool):
+            # no job left, just polling done from unfinished jobs
+            if all([job.is_done for job in unfinish_jobs]):
                 self._is_done = True
-                self.emit("success")
+            return self._is_done
 
-            if not self._is_done:
+        next_job = self.pool[self.pool_index]
+        if next_job.join:
+            previous_jobs = self.pool[: self.pool_index]
+            all_previous_jobs_are_done = True
+            for job in self.pool[: self.pool_index]:
+                if job.is_done:
+                    if next_job.join == get_hier_basename(job.name):
+                        self._run_job()
+                        break
+                else:
+                    all_previous_jobs_are_done = False
+
+            if all_previous_jobs_are_done:
+                self._run_job()
+
+        else:
+            for job in unfinish_jobs:
+                if not job.is_done:
+                    break
+                self.done_index += 1
+                if job.returncode != SUCCESS:
+                    self.emit("error", self.current_job)
+                    if not self.continue_on_error:
+                        self._is_done = True
+                        break
+            else:
+                # if no break in loop
                 self._run_job()
 
         return self._is_done
+
+        # if self.current_job.is_done:
+
+        #     if self.current_job.returncode != SUCCESS:
+        #         self.emit("error", self.current_job)
+        #         if not self.continue_on_error:
+        #             self._is_done = True
+
+        #     elif self.pool_index == 0:
+        #         self._is_done = True
+        #         self.emit("success")
+
+        #     if not self._is_done:
+        #         self._run_job()
+
+        # return self._is_done
 
     def emit(self, signal, *args, **kwargs):
         if signal in self._bind:
@@ -297,16 +358,19 @@ class EventManger:
         for pool in self.events.values():
             pool.kill()
 
-    def add_event(self, event_name, callbacks, continue_on_error=False, **kwargs):
+    def add_event(self, event_name, callbacks, config, continue_on_error=False):
 
         callback_pool = CallBackPool(gen_hier(self.name, event_name), continue_on_error)
 
         for callback in callbacks:
+            local_config = copy.deepcopy(config)
             name = callback.get("name", "")
             cmd = callback.get("cmd")
-            # kwargs.update(callback)
-            callback.update(kwargs)
-            callback_pool.add(**callback)
+            if "env" in callback and "env" in local_config:
+                local_config["env"].update(callback.pop("env"))
+            # callback.update(config)
+            local_config.update(callback)
+            callback_pool.add(**local_config)
 
         self.events[event_name] = callback_pool
 

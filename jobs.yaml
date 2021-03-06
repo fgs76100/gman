@@ -7,7 +7,8 @@ env:
     phone: 09123
 
 debug:
-    True
+    # false
+    true
 
 jobs:
     monitor_svn:
@@ -17,10 +18,8 @@ jobs:
             continue_on_error: false
             cwd: 
                 # specified a wokring directory to run commands when a event occurs
-                null
             env:
                 # local environment variables, which will also inherit from the global environment variables
-                null
         monitor:
             # schedule: "*/5 * * * * * *"
             schedule: every 5 seconds
@@ -32,8 +31,6 @@ jobs:
                 - unittest/testFile/imLinkDir
                 - unittest/testFile/imLink
             ignores:
-                - "*Link"
-                - test2
                 # - nogannamatch
                 # - ./unittest/two/trunk/test1/
                 # - ./unittest/two/trunk/test2/add.ext
@@ -43,8 +40,18 @@ jobs:
             any: 
                 # - name: search time
                 #   cmd: ls -al .
-                - name: print somthing
-                  cmd: echo "somthing"
+                - name: process1
+                  cmd: ./delay_then_echo.sh 10 process1
+                  fork: True
+
+                - name: process2
+                  cmd: ./delay_then_echo.sh 15 process2
+                  # fork: True
+
+                - name: process3
+                  cmd: ./delay_then_echo.sh 2 process3
+                  join: process1
+                  # fork: True
                 # - name: search 123 with error
                 #   cmd: grep 123  __main__.py
         on_error:
