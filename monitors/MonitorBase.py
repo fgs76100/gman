@@ -6,11 +6,12 @@ import datetime
 import fnmatch
 import re
 from crontab import CronTab
-from generic import get_now, create_logger, iglob
+from generic import get_now, iglob, iter_filelist_reader
 from event import EventManger, ANY_EVENT
+from fnmatch import fnmatch
 
 
-logger = create_logger("Monitor")
+# logger = create_logger("Monitor")
 
 MODIFIED = "modified"
 REMOVED = "removed"
@@ -39,11 +40,12 @@ def crontab_mapper(crontab):
 
 
 class Scheduler(object):
-    logger = logger
+    # logger = logger
 
     def __init__(self, schedule, name="", **kwargs):
         self.crontab = CronTab(crontab_mapper(schedule))
         self.next_run = None  # datetime object
+        self.logger = logging.getLogger(name)
 
         self.name = name
         # self.schedule_next_run()
@@ -99,9 +101,16 @@ class MonitorBase(Scheduler):
             raise TypeError("targets should be a list or a string")
 
         self.targets = []
+        self.ignores = kwargs.get("ignores", None) or []
 
         for target in targets:
-            self.targets.extend(filter(self.filter_target, iglob(target)))
+            if target.startswith("-f"):
+                target = re.split(r"\s+", target.strip())[-1]
+                filelist = iter_filelist_reader(target)
+            else:
+                filelist = [target]
+            for path in filelist:
+                self.targets.extend(filter(self.filter_target, iglob(path, True)))
         self.targets = set(self.targets)
         # self.before = self.get_status()
         self.before = {}
@@ -114,6 +123,9 @@ class MonitorBase(Scheduler):
         if not os.path.lexists(target):
             self.logger.error("The path doesn't exist: {0}".format(target))
             return False
+        for ignore in self.ignores:
+            if fnmatch(target, ignore):
+                return False
 
         return True
 
@@ -145,7 +157,7 @@ class MonitorBase(Scheduler):
 
     def verbose(self, event, item, before, after):
         self.logger.info(
-            "[{0}] {1}".format(
+            "| {0} | {1}".format(
                 event.upper(),
                 item,
             )

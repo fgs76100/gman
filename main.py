@@ -12,19 +12,21 @@ import tempfile
 import traceback
 from string import Template
 
+logger = logging.getLogger(__name__)
 
-TEMPDIR = os.path.join(os.getcwd(), ".gman_log")
+TEMPDIR = os.path.join(os.getcwd(), ".gman_tempdir")
 tempfile.tempdir = TEMPDIR
+LOGFILE = "gman.log"
 
 
-commands = ("list-targets", "show-schedule", "run")
+COMMANDS = ("list-targets", "list-schedule", "run")
 
 
 def parse_args():
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
         "command",
-        choices=commands,
+        choices=COMMANDS,
     )
     argparser.add_argument(
         "name", nargs="?", help="specify a job name for helper command"
@@ -43,14 +45,22 @@ def env_checker(env):
             raise TypeError("environment variable only can be string type: %s" % key)
 
 
-def check_tempdir():
+def rename_files(command):
 
-    if os.path.exists(TEMPDIR):
+    if os.path.exists(TEMPDIR) and command == "run":
         mtime = int(os.stat(TEMPDIR).st_mtime)
         pathname, basename = os.path.split(TEMPDIR)
         dest = basename + "_%s" % mtime
         os.rename(TEMPDIR, os.path.join(pathname, dest))
         print("Previous %s was rename to %s" % (basename, dest))
+
+    if os.path.exists(LOGFILE) and command == "run":
+        mtime = int(os.stat(LOGFILE).st_mtime)
+        # name, ext = LOGFILE.split(".", 1)
+        # dest = "%s.%s" % (name, mtime, ext)
+        dest = "%s.%s" % (LOGFILE, mtime)
+        os.rename(LOGFILE, dest)
+        print("Previous %s was rename to %s" % (LOGFILE, dest))
 
     if not os.path.exists(TEMPDIR):
         os.mkdir(TEMPDIR)
@@ -105,15 +115,6 @@ def constructor(jobs, glob_env, project):
         yield monitor
 
 
-def list_targets(jobs, name):
-    for monitor in jobs:
-        if name and monitor.name != name:
-            continue
-        print(monitor.name)
-        for target in getattr(monitor, "targets", []):
-            print(indent, target)
-
-
 def helper(command, monitors, name):
     if command == "run":
         return
@@ -126,12 +127,32 @@ def helper(command, monitors, name):
         if command == "list-targets":
             for target in getattr(monitor, "targets", []):
                 print(indent, target)
-        if command == "show-schedule":
+        if command == "list-schedule":
             for _ in range(5):
                 print(indent, monitor.schedule_next_run(monitor.next_run))
-                # print(indent, schedule)
 
     raise SystemExit(0)
+
+
+def setup_root_logger(is_debug):
+    logging_format = dict(
+        fmt="%(asctime)s [%(levelname)s] %(name)s %(message)s",
+        datefmt="%Y/%m/%d %H:%M:%S",
+    )
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(
+        logging.DEBUG if is_debug else logging.INFO,
+    )
+
+    formatter = logging.Formatter(**logging_format)
+
+    sh = logging.StreamHandler()
+    fh = logging.FileHandler(filename=LOGFILE, mode="w")
+    sh.setFormatter(formatter)
+    fh.setFormatter(formatter)
+    root_logger.addHandler(sh)
+    root_logger.addHandler(fh)
 
 
 def event_loop(config=None):
@@ -140,8 +161,11 @@ def event_loop(config=None):
 
         with open(args.config, "r") as f:
             working_env = yaml.safe_load(f)
+
+        rename_files(args.command)
     else:
         working_env = config
+        rename_files("run")
 
     if not isinstance(working_env, dict):
         raise TypeError("argument is not a dict type")
@@ -154,26 +178,19 @@ def event_loop(config=None):
     if not project:
         raise ValueError("The project value must be specified!")
 
-    if working_env.get("debug", False):
-        logging.getLogger("Event").setLevel(logging.DEBUG)
-        logging.getLogger("Monitor").setLevel(logging.DEBUG)
-
     if isinstance(env, dict):
         glob_env.update(env)
 
+    setup_root_logger(working_env.get("debug", False))
+
     monitors = []
-
-    check_tempdir()
-
     for monitor in constructor(working_env.get("jobs"), glob_env, project):
         monitors.append(monitor)
-
-    # args.name = gen_hier(project, args.name)
 
     if config is None:
         helper(args.command, monitors, args.name)
 
-    print("\nInitializing... it could take a while")
+    print("\nInitializing...")
     for monitor in monitors:
         monitor.initialize()
     print("Running...\nPress Ctrl+c to exit")
@@ -187,6 +204,7 @@ def event_loop(config=None):
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\ntrying to terminate unfinished tasks before exit...\n")
+            logging.shutdown()
             for monitor in monitors:
                 try:
                     monitor.kill()

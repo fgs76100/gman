@@ -7,10 +7,10 @@ import tempfile
 import time
 import yaml
 import threading
-from generic import get_now, gen_hier, create_logger, indent, get_hier_basename
+from generic import get_now, gen_hier, indent, get_hier_basename
 
 
-LOGGER = create_logger("Event")
+LOGGER = logging.getLogger("Event")
 
 EXECUTE_FAIL = 191
 SUCCESS = 0
@@ -20,7 +20,7 @@ ANY_EVENT = "any"  # speical event will trigger if none of events match
 
 class PopenThread(threading.Thread):
     """
-    create a thead has same API as subprocess.Popen
+    create a thread has same API as subprocess.Popen
     """
 
     def __init__(self, **kwargs):
@@ -57,7 +57,7 @@ class CallBack:
         self.worker = None
         self._is_done = True
         self.stdout_tmpfile = None
-        self.timeout = 10
+        self.timeout = 30
         # self.history = dict()
         self.env = env or {}
         self.kwargs = kwargs
@@ -108,7 +108,7 @@ class CallBack:
             **self.kwargs
         )
         # if self.logger.isEnabledFor(logging.DEBUG):
-        self.logger.info("%s\n%s", "%s was invoked" % self.name, self.get_info())
+        self.logger.info('"%s"\n%s', "%s was invoked" % self.name, self.get_info())
 
     def get_info(self, _indent=indent):
         if callable(self._cmd):
@@ -135,7 +135,7 @@ class CallBack:
 
             if self.logger.isEnabledFor(logging.DEBUG):
                 self.logger.debug(
-                    "{name} exited with {code}\n{info}".format(
+                    '"{name}" exited with {code}\n{info}'.format(
                         name=self.name,
                         code=self.returncode,
                         info=self.get_info(),
@@ -220,7 +220,7 @@ class CallBack:
 
 class CallBackPool:
 
-    logger = LOGGER
+    # logger = LOGGER
 
     def __init__(self, name, continue_on_error=False):
         self.continue_on_error = continue_on_error
@@ -284,7 +284,7 @@ class CallBackPool:
 
 class EventManger:
 
-    logger = LOGGER
+    # logger = LOGGER
 
     def __init__(self, name="", env=None):
         self.name = name

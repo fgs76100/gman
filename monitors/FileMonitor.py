@@ -13,7 +13,8 @@ class FileMonitor(MonitorBase):
                         if os.path.isfile(filename):
                             yield filename
             else:
-                if os.path.lexists(target):
+                # if os.path.lexists(target): # broken symbloic link does not have mtime stat, so cannot yield a broken link
+                if os.path.exists(target):
                     yield target
 
     def get_status(self):

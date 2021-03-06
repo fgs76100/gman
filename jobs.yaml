@@ -24,18 +24,25 @@ jobs:
         monitor:
             # schedule: "*/5 * * * * * *"
             schedule: every 5 seconds
-            type: svn
+            type: file
             targets: 
                 - ./unittest/svn_local2
-                - ./notgannamatch
+                - unittest/testFile/brokenLink
+                - unittest/testFile/brokenLinkDir
+                - unittest/testFile/imLinkDir
+                - unittest/testFile/imLink
+            ignores:
+                - "*Link"
+                - test2
+                # - nogannamatch
                 # - ./unittest/two/trunk/test1/
                 # - ./unittest/two/trunk/test2/add.ext
         on_events:
             # events will be trigered if monitor detects any changes on targets
             # event type: added, modified, removed or any
             any: 
-                - name: search time
-                  cmd: ls -al .
+                # - name: search time
+                #   cmd: ls -al .
                 - name: print somthing
                   cmd: echo "somthing"
                 # - name: search 123 with error

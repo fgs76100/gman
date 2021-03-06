@@ -6,6 +6,7 @@ import os
 import re
 import itertools
 import glob
+from .filelist_reader import iter_filelist_reader
 
 indent = "    "
 
@@ -21,27 +22,20 @@ def gen_hier(parent, child):
     """
     generate hierarchy scope
     """
-    return "{parent}/{child}".format(parent=parent, child=child)
+    # return "{parent}/{child}".format(parent=parent, child=child)
+    return os.path.join(parent, child)
 
 
 def get_hier_basename(hier):
     return os.path.basename(hier)
 
 
-def create_logger(name):
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
+# def create_logger(name):
+#     return logging.getLogger(name)
 
-    formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
-        datefmt="%Y/%m/%d %H:%M:%S",
-    )
 
-    handler = logging.StreamHandler()
-
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    return logger
+def filelist_reader(filelist):
+    return list(iter_filelist_reader(filelist))
 
 
 def _iglobstar(dirname, basename):
@@ -73,7 +67,7 @@ def _glob1(dirname, basename):
             yield name
 
 
-def iglob(pathname):
+def iglob(pathname, yield_even_not_exists=False):
 
     pathname = os.path.expandvars(pathname)
     dirname, basename = os.path.split(pathname)
@@ -81,16 +75,14 @@ def iglob(pathname):
     assert dirname != pathname, pathname
 
     if not glob.has_magic(pathname):
-        if basename:
+        if yield_even_not_exists:
+            yield pathname
+        elif basename:
             if os.path.lexists(pathname):
                 yield pathname
-            else:
-                print("WARNING: Drop '%s' because it doesn't exist" % pathname)
         else:
             if os.path.isdir(dirname):
                 yield dirname
-            else:
-                print("WARNING: Drop '%s' because it is not a directory" % pathname)
         return
 
     if dirname == "":
