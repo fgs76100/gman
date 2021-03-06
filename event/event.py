@@ -294,9 +294,9 @@ class CallBackPool:
                         break
                 else:
                     all_previous_jobs_are_done = False
-
-            if all_previous_jobs_are_done:
-                self._run_job()
+            else:
+                if all_previous_jobs_are_done:
+                    self._run_job()
 
         else:
             for job in unfinish_jobs:
@@ -313,22 +313,6 @@ class CallBackPool:
                 self._run_job()
 
         return self._is_done
-
-        # if self.current_job.is_done:
-
-        #     if self.current_job.returncode != SUCCESS:
-        #         self.emit("error", self.current_job)
-        #         if not self.continue_on_error:
-        #             self._is_done = True
-
-        #     elif self.pool_index == 0:
-        #         self._is_done = True
-        #         self.emit("success")
-
-        #     if not self._is_done:
-        #         self._run_job()
-
-        # return self._is_done
 
     def emit(self, signal, *args, **kwargs):
         if signal in self._bind:

@@ -51,6 +51,9 @@ jobs:
                 - name: process3
                   cmd: ./delay_then_echo.sh 2 process3
                   join: process1
+
+                - name: process4
+                  cmd: ./delay_then_echo.sh 10 process4
                   # fork: True
                 # - name: search 123 with error
                 #   cmd: grep 123  __main__.py
