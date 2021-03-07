@@ -111,12 +111,7 @@ class CallBack:
             stderr=subprocess.STDOUT,
             **self.kwargs
         )
-        # if self.logger.isEnabledFor(logging.DEBUG):
         self.logger.info('"%s" was invoked\n%s', self.name, self.get_info())
-        # except:
-        #     self.logger.exception('"%s" failed to execute', self.get_cmd())
-        #     self._is_done = True
-        #     self.returncode = EXECUTE_FAIL
 
     def get_info(self, _indent=indent):
         if callable(self._cmd):
