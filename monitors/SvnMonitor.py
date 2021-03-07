@@ -133,7 +133,7 @@ class SvnMonitor(MonitorBase.MonitorBase):
     def get_status(self):
         status = {}
 
-        for target in self.targets:
+        for target in self.iter_targets():
             if self.before:
                 self.svn_up(target)
 

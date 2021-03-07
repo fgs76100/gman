@@ -3,9 +3,15 @@ import re
 
 
 OPTION_PREFIX = "+-"
+filelist_pattern = re.compile(r"\s*(-f|-F)?\s*(\S+)")
 
 
 def iter_filelist_reader(filelist, _scope=0, parent=None, line_count=None):
+
+    match = filelist_pattern.match(filelist)
+    if not match:
+        raise ValueError("input filelist format incorrect")
+    filelist = match.group(2)
 
     if not os.path.exists(filelist):
         loc = " at line %s in %s" % (line_count, parent) if parent else ""
