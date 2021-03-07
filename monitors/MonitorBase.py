@@ -98,20 +98,27 @@ class MonitorBase(Scheduler):
         if not isinstance(targets, list):
             raise TypeError("targets should be a list or a string")
 
-        self.targets = []
+        self._targets = targets
         self.ignores = kwargs.get("ignores", None) or []
 
-        for target in targets:
+        # self.before = self.get_status()
+        self.before = {}
+
+    def iter_targets(self):
+        for target in self._targets:
             if target.startswith("-f"):
-                target = re.split(r"\s+", target.strip())[-1]
                 filelist = iter_filelist_reader(target)
             else:
                 filelist = [target]
-            for path in filelist:
-                self.targets.extend(filter(self.filter_target, iglob(path, True)))
-        self.targets = set(self.targets)
-        # self.before = self.get_status()
-        self.before = {}
+
+            for pathname in filelist:
+                for item in iglob(pathname, True):
+                    if self.filter_target(item):
+                        yield item
+
+    @property
+    def targets(self):
+        return list(self.iter_targets())
 
     def initialize(self):
         super(MonitorBase, self).initialize()

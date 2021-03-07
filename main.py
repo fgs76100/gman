@@ -90,6 +90,7 @@ def constructor(jobs, glob_env, project):
         monitor_config = settings.get("monitor", {}) or {}
         if not monitor_config:
             raise ValueError("monitor field is empty at %s" % name)
+
         monitor_config["name"] = gen_hier(project, name)
         monitor_type = monitor_config.get("type", "") or ""
 
@@ -97,7 +98,7 @@ def constructor(jobs, glob_env, project):
             monitor = SvnMonitor(**monitor_config)
         elif monitor_type == "file":
             monitor = FileMonitor(**monitor_config)
-        elif not monitor_type or not monitor_config.get("targets", None):
+        elif monitor_type == "scheduler":
             monitor = Scheduler(**monitor_config)
         else:
             raise TypeError(
@@ -145,7 +146,7 @@ def helper(command, monitors, name):
 
         print(monitor.name)
         if command == "list-targets":
-            for target in getattr(monitor, "targets", []):
+            for target in getattr(monitor, "iter_targets", lambda: [])():
                 print(indent, target)
         if command == "list-schedule":
             for _ in range(5):

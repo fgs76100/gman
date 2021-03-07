@@ -4,7 +4,7 @@ import os
 
 class FileMonitor(MonitorBase):
     def gather_files(self):
-        for target in self.targets:
+        for target in self.iter_targets():
             if os.path.isdir(target):
                 for filename in os.listdir(target):
                     if not filename.startswith("."):
