@@ -69,18 +69,21 @@ class SvnMonitor(MonitorBase.MonitorBase):
 
         options = ["--depth", "empty", "--verbose"]
 
-        svn_st = self.svn_st(target=target, options=options)
-
-        # note that due to --depth=empty, the svn st only can yield one item or nothing
-        # if it yields nothing, that means target is unversioned. Otherwise, target is under version control
-        try:
-            status = next(svn_st)
-            return super(SvnMonitor, self).filter_target(target)
-        except StopIteration:
-            self.logger.error(
-                "The path is not under version control: {0}".format(target)
-            )
-            return False
+        if super(SvnMonitor, self).filter_target(target):
+            # note that due to --depth=empty, the svn st only can yield one item or nothing
+            # if it yields nothing, that means target is unversioned. Otherwise, target is under version control
+            svn_st = self.svn_st(target=target, options=options)
+            try:
+                status = next(svn_st)
+                return True
+            except StopIteration:
+                self.logger.error(
+                    "Drop: The pathname is not under version control: {0}".format(
+                        target
+                    )
+                )
+                return False
+        return False
 
     def svn_st(self, target="", options=None, **kwargs):
         svn_st = ["svn", "st", "--xml", target]

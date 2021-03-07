@@ -118,12 +118,14 @@ class MonitorBase(Scheduler):
         self.before = self.get_status()
 
     def filter_target(self, target):
-        if not os.path.lexists(target):
-            self.logger.error("The path doesn't exist: {0}".format(target))
-            return False
         for ignore in self.ignores:
             if fnmatch(target, ignore):
+                self.logger.debug("Drop: user ignores: {0}".format(target))
                 return False
+
+        if not os.path.lexists(target):
+            self.logger.error("Drop: the pathname doesn't exist: {0}".format(target))
+            return False
 
         return True
 
