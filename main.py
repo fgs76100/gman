@@ -1,6 +1,6 @@
 from __future__ import print_function
 from monitors import FileMonitor, SvnMonitor, Scheduler
-from event import EventManger
+from event import EventManger, ANY_EVENT
 from generic import gen_hier, indent, get_hier_basename
 
 import logging
@@ -12,7 +12,8 @@ import tempfile
 import traceback
 import copy
 import shutil
-from string import Template
+
+# from string import Template
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +44,12 @@ def parse_args():
 
 def env_checker(env):
     for key, value in env.items():
-        if not isinstance(value, str):
-            raise TypeError("environment variable only can be string type: %s" % key)
+        # if not isinstance(value, str):
+        if value is str:
+            raise TypeError(
+                '"%s" environment variable only can be string type, got %s instead'
+                % (key, type(value))
+            )
 
 
 def rename_files(command):
@@ -99,16 +104,18 @@ def constructor(jobs, glob_env, project):
                 "This monitor type doesn't support: {0}".format(monitor_type)
             )
 
-        on_events = settings.get("on_events", {}) or {}
-        if not len(on_events):
-            raise NotImplementedError
-
         continue_on_error = job_config.pop("continue_on_error", False)
+        on_events = settings.get("on_events", None) or None
 
-        for event, callbacks in on_events.items():
-            if callbacks:
-                config = copy.deepcopy(job_config)
-                monitor.add_event(event, callbacks, config, continue_on_error)
+        if isinstance(on_events, dict):
+            for event, callbacks in on_events.items():
+                if callbacks:
+                    config = copy.deepcopy(job_config)
+                    monitor.add_event(event, callbacks, config, continue_on_error)
+
+        elif isinstance(on_events, list):
+            config = copy.deepcopy(job_config)
+            monitor.add_event(ANY_EVENT, on_events, config, continue_on_error)
 
         for signal in ("on_error", "on_success"):
             callback = settings.get(signal, None)
@@ -169,8 +176,17 @@ def setup_root_logger(is_debug):
 
 
 def event_loop(config=None):
+    glob_env = os.environ.copy()
+
     if config is None:
         args = parse_args()
+
+        # def env_substitute(self, node):
+        #     string = Template(self.construct_scalar(node))
+        #     return string.safe_substitute(**glob_env)
+
+        # yaml_loader = yaml.SafeLoader
+        # yaml_loader.add_constructor(u"tag:yaml.org,2002:str", env_substitute)
 
         with open(args.config, "r") as f:
             working_env = yaml.safe_load(f)
@@ -183,8 +199,6 @@ def event_loop(config=None):
     if not isinstance(working_env, dict):
         raise TypeError("argument is not a dict type")
 
-    glob_env = os.environ.copy()
-
     env = working_env.get("env", {}) or {}
     project = working_env.get("project", None)
 
@@ -192,6 +206,7 @@ def event_loop(config=None):
         raise ValueError("The project value must be specified!")
 
     if isinstance(env, dict):
+        env["__PROJECT__"] = project
         glob_env.update(env)
 
     setup_root_logger(working_env.get("debug", False))

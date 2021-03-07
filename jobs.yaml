@@ -30,30 +30,22 @@ jobs:
                 - unittest/testFile/brokenLinkDir
                 - unittest/testFile/imLinkDir
                 - unittest/testFile/imLink
-            ignores:
-                # - nogannamatch
-                # - ./unittest/two/trunk/test1/
-                # - ./unittest/two/trunk/test2/add.ext
         on_events:
-            # events will be trigered if monitor detects any changes on targets
-            # event type: added, modified, removed or any
-            any: 
-                # - name: search time
-                #   cmd: ls -al .
-                - name: process1
-                  cmd: ./delay_then_echo.sh 10 process1
-                  fork: True
+            # following commands will be trigered if monitor detects any changes on targets
+            - name: process1 ${USER}
+              cmd: ./delay_then_echo.sh 10 process1
+              fork: True
 
-                - name: process2
-                  cmd: ./delay_then_echo.sh 15 process2
-                  # fork: True
+            - name: process2
+              cmd: ./delay_then_echo.sh 15 process2
+              # fork: True
 
-                - name: process3
-                  cmd: ./delay_then_echo.sh 2 process3
-                  join: process1
+            - name: process3
+              cmd: ./delay_then_echo.sh 2 process3
+              join: process1
 
-                - name: process4
-                  cmd: ./delay_then_echo.sh 10 process4
+            - name: process4
+              cmd: ./delay_then_echo.sh 10 process4
                   # fork: True
                 # - name: search 123 with error
                 #   cmd: grep 123  __main__.py
@@ -63,7 +55,7 @@ jobs:
             # cmd: ./expensive.sh
               # cmd: send -phone ${phone} -msg "error when ..."
         on_success:
-            name: do somthing if all of cmds are success
+            name: do somthing if all of cmds succeed
             cmd: echo "YES"
 
 

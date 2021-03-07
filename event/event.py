@@ -16,7 +16,7 @@ LOGGER = logging.getLogger("Event")
 EXECUTE_FAIL = 191
 SUCCESS = 0
 
-ANY_EVENT = "any"  # speical event will trigger if none of events match
+ANY_EVENT = "event"  # speical event will trigger if none of events match
 
 
 class PopenThread(threading.Thread):
@@ -401,6 +401,7 @@ class EventManger:
     def on_success(self):
         try:
             if self.success_handler is not None:
+                self.success_handler.env.update({"__EVENT_NAME__": self.name})
                 self.success_handler.communicate()
                 # if self.logger.isEnabledFor(logging.DEBUG):
                 if self.success_handler.returncode != SUCCESS:
