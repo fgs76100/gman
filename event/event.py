@@ -224,7 +224,7 @@ class CallBack:
 
 class CallBackPool:
 
-    # logger = LOGGER
+    logger = LOGGER
 
     def __init__(self, name, continue_on_error=False):
         self.continue_on_error = continue_on_error
@@ -235,31 +235,34 @@ class CallBackPool:
         self.histories = []
         self._is_done = True
         self._bind = {}
-        self.done_index = 0
+        self.join_index = None
 
     def add(self, name, cmd, **kwargs):
         self.pool.append(CallBack(gen_hier(self.name, name), cmd, **kwargs))
 
     def _run_job(self):
         if self.pool_index < len(self.pool):
+            self.join_index = None
             self.current_job = self.pool[self.pool_index]
             self.current_job()
             self.pool_index += 1
 
             if self.pool_index >= len(self.pool):
                 return
+
             next_job = self.pool[self.pool_index]
+            if next_job.join:
+                for index, job in enumerate(self.pool[: self.pool_index]):
+                    if next_job.join == get_hier_basename(job.name):
+                        self.join_index = index
+                        break
 
-            if next_job.fork:
-                self._run_job()
-
-            elif self.current_job.fork and not next_job.join:
+            elif self.current_job.fork:
                 self._run_job()
 
     def run(self):
         self._is_done = False
         self.pool_index = 0
-        self.done_index = 0
         if not self.pool:
             raise ValueError("There are no callback was added in pool")
         self._run_job()
@@ -270,42 +273,30 @@ class CallBackPool:
 
     def _poll(self):
 
-        unfinish_jobs = self.pool[self.done_index : self.pool_index]
-
-        if self.pool_index == len(self.pool):
-            # no job left, just polling done from unfinished jobs
-            if all([job.is_done for job in unfinish_jobs]):
-                self._is_done = True
-            return self._is_done
-
-        next_job = self.pool[self.pool_index]
-        if next_job.join:
-            previous_jobs = self.pool[: self.pool_index]
-            all_previous_jobs_are_done = True
-            for job in self.pool[: self.pool_index]:
-                if job.is_done:
-                    if next_job.join == get_hier_basename(job.name):
-                        self._run_job()
-                        break
-                else:
-                    all_previous_jobs_are_done = False
-            else:
-                if all_previous_jobs_are_done:
-                    self._run_job()
-
+        if self.join_index is not None:
+            current_job = self.pool[self.join_index]
         else:
-            for job in unfinish_jobs:
-                if not job.is_done:
-                    break
-                self.done_index += 1
-                if job.returncode != SUCCESS:
-                    self.emit("error", self.current_job)
-                    if not self.continue_on_error:
-                        self._is_done = True
-                        break
+            current_job = self.current_job
+
+        if current_job.is_done:
+            if self.pool_index < len(self.pool):
+                if current_job.returncode == SUCCESS or self.continue_on_error:
+                    self._run_job()
+                else:
+                    self.emit("error", job)
+                    self._is_done = True
             else:
-                # if no break in loop
-                self._run_job()
+                # if self.pool_index >= len(self.pool) and not self._is_done:
+                if all([job.is_done for job in self.pool]):
+                    self._is_done = True
+                    error = False
+                    for job in self.pool:
+                        if job.returncode != SUCCESS:
+                            self.emit("error", job)
+                            error = True
+                    if not error:
+                        self.emit("success")
+                return self._is_done
 
         return self._is_done
 
@@ -324,7 +315,7 @@ class CallBackPool:
 
 class EventManger:
 
-    # logger = LOGGER
+    logger = LOGGER
 
     def __init__(self, name="", env=None):
         self.name = name

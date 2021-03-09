@@ -17,6 +17,7 @@ jobs:
         job_config:
             continue_on_error: false
             cwd: 
+                "./"
                 # specified a wokring directory to run commands when a event occurs
             env:
                 # local environment variables, which will also inherit from the global environment variables
@@ -32,20 +33,20 @@ jobs:
                 - unittest/testFile/imLink
         on_events:
             # following commands will be trigered if monitor detects any changes on targets
-            - name: process1 ${USER}
-              cmd: ./delay_then_echo.sh 10 process1
+            - name: process1 ${USER} 
+              cmd: ./delay_then_echo.sh 10 process1 1
               fork: True
 
             - name: process2
-              cmd: ./delay_then_echo.sh 15 process2
-              # fork: True
+              cmd: ./delay_then_echo.sh 15 process2 0
+              fork: True
 
             - name: process3
-              cmd: ./delay_then_echo.sh 2 process3
+              cmd: ./delay_then_echo.sh 2 process3 0
               join: process1
 
-            - name: process4
-              cmd: ./delay_then_echo.sh 10 process4
+            # - name: process4
+            #   cmd: ./delay_then_echo.sh 10 process4
                   # fork: True
                 # - name: search 123 with error
                 #   cmd: grep 123  __main__.py
