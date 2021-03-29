@@ -283,7 +283,7 @@ class CallBackPool:
                 if current_job.returncode == SUCCESS or self.continue_on_error:
                     self._run_job()
                 else:
-                    self.emit("error", job)
+                    self.emit("error", current_job)
                     self._is_done = True
             else:
                 # if self.pool_index >= len(self.pool) and not self._is_done:
@@ -292,7 +292,7 @@ class CallBackPool:
                     error = False
                     for job in self.pool:
                         if job.returncode != SUCCESS:
-                            self.emit("error", job)
+                            self.emit("error", current_job)
                             error = True
                     if not error:
                         self.emit("success")
